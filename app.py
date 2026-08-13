@@ -89,7 +89,7 @@ def get_status_badge(issues):
 
 def dataframe_to_png(df: pd.DataFrame) -> bytes:
     """Converts a pandas DataFrame into a formatted PNG image byte stream."""
-    fig, ax = plt.subplots(figsize=(max(8, len(df.columns) * 3), max(2, len(df) * 0.6 + 1.5)))
+    fig, ax = plt.subplots(figsize=(max(10, len(df.columns) * 3.5), max(2, len(df) * 0.7 + 1.5)))
     ax.axis('tight')
     ax.axis('off')
 
@@ -101,7 +101,7 @@ def dataframe_to_png(df: pd.DataFrame) -> bytes:
     )
     
     table.auto_set_font_size(False)
-    table.set_fontsize(10)  # <-- Fixed: changed set_font_size to set_fontsize
+    table.set_fontsize(9)
     table.scale(1.2, 1.8)
 
     # Style header row
@@ -188,7 +188,7 @@ if st.button("Inspect All URLs", type="primary"):
         status_text.empty()
         progress_bar.empty()
 
-        # --- STEP 2: SUMMARY TABLE ---
+        # --- STEP 2: SUMMARY TABLE WITH MISSING TAGS NOTES ---
         st.subheader("📊 Summary Results")
         
         summary_rows = []
@@ -197,7 +197,8 @@ if st.button("Inspect All URLs", type="primary"):
                 row = {
                     "URL": item["url"],
                     "OG Status": "🚨 Request Failed",
-                    "Total Issues": "N/A"
+                    "Total Issues": "N/A",
+                    "Missing Tags (Notes)": "Connection / HTTP Error"
                 }
                 if check_twitter:
                     row["Twitter Status"] = "🚨 Request Failed"
@@ -205,14 +206,23 @@ if st.button("Inspect All URLs", type="primary"):
                 og_badge = get_status_badge(item["og_issues"])
                 total_issues = len(item["og_issues"]) + len(item["twitter_issues"])
                 
+                # Extract missing tag names for notes
+                missing_tags = [issue["tag"] for issue in item["og_issues"]]
+                if check_twitter:
+                    missing_tags.extend([issue["tag"] for issue in item["twitter_issues"]])
+                
+                notes = ", ".join(missing_tags) if missing_tags else "None"
+                
                 row = {
                     "URL": item["url"],
                     "OG Status": og_badge,
-                    "Total Issues": total_issues
                 }
                 if check_twitter:
                     row["Twitter Status"] = get_status_badge(item["twitter_issues"])
                 
+                row["Total Issues"] = total_issues
+                row["Missing Tags (Notes)"] = notes
+
             summary_rows.append(row)
 
         df_summary = pd.DataFrame(summary_rows)
