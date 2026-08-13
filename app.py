@@ -4,17 +4,25 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 
 # Page configuration
-st.set_page_config(page_title="OG & Twitter Card Checker", page_icon="🔍", layout="wide")
+st.set_page_config(page_title="Multi-URL OG & Twitter Checker", page_icon="🔍", layout="wide")
 
-st.title("🔍 Open Graph & Twitter Card Inspector")
-st.write("Inspect, validate, and preview Open Graph and Twitter Card meta tags for any web URL.")
+st.title("🔍 Multi-URL Open Graph & Twitter Card Inspector")
+st.write("Inspect, validate, and preview Open Graph and Twitter Card meta tags for multiple URLs simultaneously.")
 
 # --- SIDEBAR CONTROLS ---
 st.sidebar.header("⚙️ Inspector Options")
-check_twitter = st.sidebar.checkbox("Include Twitter Card inspection", value=True, help="Uncheck if the target sites do not implement Twitter-specific tags.")
+check_twitter = st.sidebar.checkbox(
+    "Include Twitter Card inspection", 
+    value=True, 
+    help="Uncheck if the target sites do not implement Twitter-specific tags."
+)
 
-# Input
-url = st.text_input("Enter Web URL:", placeholder="https://example.com")
+# Multi-line input widget
+urls_input = st.text_area(
+    "Enter Web URLs (one per line):",
+    placeholder="https://example.com\nhttps://streamlit.io\nhttps://github.com",
+    height=150
+)
 
 
 def validate_metadata(og_tags, twitter_tags, include_twitter):
@@ -65,129 +73,139 @@ def validate_metadata(og_tags, twitter_tags, include_twitter):
     return og_issues, twitter_issues
 
 
-if st.button("Inspect & Validate", type="primary") or url:
-    if not url:
-        st.warning("Please enter a URL first.")
+if st.button("Inspect All URLs", type="primary"):
+    # Split input by lines and clean up whitespace/empty lines
+    url_list = [line.strip() for line in urls_input.splitlines() if line.strip()]
+
+    if not url_list:
+        st.warning("Please enter at least one valid URL.")
     else:
-        if not url.startswith(("http://", "https://")):
-            url = "https://" + url
+        st.info(f"Processing {len(url_list)} URL(s)...")
 
-        with st.spinner("Fetching page metadata..."):
-            try:
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                }
-                response = requests.get(url, headers=headers, timeout=10)
-                response.raise_for_status()
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
 
-                soup = BeautifulSoup(response.text, "html.parser")
-                meta_tags = soup.find_all("meta")
+        # Iterate over each pasted URL
+        for idx, raw_url in enumerate(url_list, start=1):
+            url = raw_url if raw_url.startswith(("http://", "https://")) else "https://" + raw_url
+            
+            # Collapse panels by default if processing multiple links, auto-expand if only one
+            is_expanded = len(url_list) == 1
 
-                og_tags = {}
-                twitter_tags = {}
+            with st.expander(f"🌐 #{idx}: {url}", expanded=is_expanded):
+                with st.spinner(f"Fetching metadata..."):
+                    try:
+                        response = requests.get(url, headers=headers, timeout=10)
+                        response.raise_for_status()
 
-                for tag in meta_tags:
-                    key = tag.get("property") or tag.get("name") or ""
-                    key = key.lower().strip()
-                    content = tag.get("content", "").strip()
+                        soup = BeautifulSoup(response.text, "html.parser")
+                        meta_tags = soup.find_all("meta")
 
-                    if key.startswith("og:"):
-                        og_tags[key] = content
-                    elif check_twitter and key.startswith("twitter:"):
-                        twitter_tags[key] = content
+                        og_tags = {}
+                        twitter_tags = {}
 
-                og_issues, twitter_issues = validate_metadata(og_tags, twitter_tags, check_twitter)
+                        for tag in meta_tags:
+                            key = tag.get("property") or tag.get("name") or ""
+                            key = key.lower().strip()
+                            content = tag.get("content", "").strip()
 
-                # Split into Tabs
-                tab_previews, tab_audit, tab_raw = st.tabs(["🖼️ Previews", "⚠️ Audit & Validation", "📋 Raw Tags"])
+                            if key.startswith("og:"):
+                                og_tags[key] = content
+                            elif check_twitter and key.startswith("twitter:"):
+                                twitter_tags[key] = content
 
-                # --- TAB 1: PREVIEWS ---
-                with tab_previews:
-                    # Adjust column width adaptively
-                    if check_twitter:
-                        col1, col2 = st.columns(2)
-                    else:
-                        col1 = st.container()
+                        og_issues, twitter_issues = validate_metadata(og_tags, twitter_tags, check_twitter)
 
-                    with col1:
-                        st.subheader("Facebook / Open Graph")
-                        with st.container(border=True):
-                            og_img = og_tags.get("og:image")
-                            if og_img:
-                                st.image(og_img, use_container_width=True)
+                        # Split results into Tabs inside each accordion container
+                        tab_previews, tab_audit, tab_raw = st.tabs(["🖼️ Previews", "⚠️ Audit & Validation", "📋 Raw Tags"])
+
+                        # --- TAB 1: PREVIEWS ---
+                        with tab_previews:
+                            if check_twitter:
+                                col1, col2 = st.columns(2)
                             else:
-                                st.info("🖼️ No `og:image` set.")
+                                col1 = st.container()
 
-                            site_name = og_tags.get("og:site_name", urlparse(url).netloc)
-                            st.caption(site_name.upper())
-                            st.markdown(f"### {og_tags.get('og:title', 'No Title Set')}")
-                            st.write(og_tags.get("og:description", "No description set."))
+                            with col1:
+                                st.subheader("Facebook / Open Graph")
+                                with st.container(border=True):
+                                    og_img = og_tags.get("og:image")
+                                    if og_img:
+                                        st.image(og_img, use_container_width=True)
+                                    else:
+                                        st.info("🖼️ No `og:image` set.")
 
-                    if check_twitter:
-                        with col2:
-                            st.subheader("X / Twitter Card")
-                            card_type = twitter_tags.get("twitter:card", "summary (default fallback)")
-                            tw_img = twitter_tags.get("twitter:image") or og_tags.get("og:image")
-                            tw_title = twitter_tags.get("twitter:title") or og_tags.get("og:title", "No Title Set")
-                            tw_desc = twitter_tags.get("twitter:description") or og_tags.get("og:description", "No description set.")
+                                    site_name = og_tags.get("og:site_name", urlparse(url).netloc)
+                                    st.caption(site_name.upper())
+                                    st.markdown(f"### {og_tags.get('og:title', 'No Title Set')}")
+                                    st.write(og_tags.get("og:description", "No description set."))
 
-                            with st.container(border=True):
-                                st.caption(f"CARD TYPE: `{card_type}`")
-                                if tw_img:
-                                    st.image(tw_img, use_container_width=True)
+                            if check_twitter:
+                                with col2:
+                                    st.subheader("X / Twitter Card")
+                                    card_type = twitter_tags.get("twitter:card", "summary (default fallback)")
+                                    tw_img = twitter_tags.get("twitter:image") or og_tags.get("og:image")
+                                    tw_title = twitter_tags.get("twitter:title") or og_tags.get("og:title", "No Title Set")
+                                    tw_desc = twitter_tags.get("twitter:description") or og_tags.get("og:description", "No description set.")
+
+                                    with st.container(border=True):
+                                        st.caption(f"CARD TYPE: `{card_type}`")
+                                        if tw_img:
+                                            st.image(tw_img, use_container_width=True)
+                                        else:
+                                            st.info("🖼️ No image set.")
+
+                                        st.markdown(f"### {tw_title}")
+                                        st.write(tw_desc)
+                                        st.caption(urlparse(url).netloc)
+
+                        # --- TAB 2: AUDIT & VALIDATION ---
+                        with tab_audit:
+                            total_issues = len(og_issues) + len(twitter_issues)
+                            
+                            if total_issues == 0:
+                                st.success("🎉 All checked core tags are properly configured!")
+                            else:
+                                st.info(f"Found {total_issues} metadata warning(s) or missing tag(s).")
+
+                            if check_twitter:
+                                val_col1, val_col2 = st.columns(2)
+                            else:
+                                val_col1 = st.container()
+
+                            with val_col1:
+                                st.subheader("Open Graph Audit")
+                                if not og_issues:
+                                    st.success("Open Graph requirements met.")
                                 else:
-                                    st.info("🖼️ No image set.")
+                                    for issue in og_issues:
+                                        icon = "🔴" if issue["level"] == "Required" else "🟡"
+                                        st.warning(f"{icon} **Missing `{issue['tag']}`** ({issue['level']})\n\n_{issue['description']}_")
 
-                                st.markdown(f"### {tw_title}")
-                                st.write(tw_desc)
-                                st.caption(urlparse(url).netloc)
+                            if check_twitter:
+                                with val_col2:
+                                    st.subheader("Twitter Card Audit")
+                                    if not twitter_issues:
+                                        st.success("Twitter Card requirements met.")
+                                    else:
+                                        for issue in twitter_issues:
+                                            icon = "🔴" if issue["level"] == "Required" else "🟡"
+                                            st.warning(f"{icon} **Missing `{issue['tag']}`** ({issue['level']})\n\n_{issue['description']}_")
 
-                # --- TAB 2: AUDIT & VALIDATION ---
-                with tab_audit:
-                    total_issues = len(og_issues) + len(twitter_issues)
-                    
-                    if total_issues == 0:
-                        st.success("🎉 All checked core tags are properly configured!")
-                    else:
-                        st.info(f"Found {total_issues} metadata warning(s) or missing tag(s).")
-
-                    if check_twitter:
-                        val_col1, val_col2 = st.columns(2)
-                    else:
-                        val_col1 = st.container()
-
-                    with val_col1:
-                        st.subheader("Open Graph Audit")
-                        if not og_issues:
-                            st.success("Open Graph requirements met.")
-                        else:
-                            for issue in og_issues:
-                                icon = "🔴" if issue["level"] == "Required" else "🟡"
-                                st.warning(f"{icon} **Missing `{issue['tag']}`** ({issue['level']})\n\n_{issue['description']}_")
-
-                    if check_twitter:
-                        with val_col2:
-                            st.subheader("Twitter Card Audit")
-                            if not twitter_issues:
-                                st.success("Twitter Card requirements met.")
+                        # --- TAB 3: RAW TAGS ---
+                        with tab_raw:
+                            if check_twitter:
+                                raw_col1, raw_col2 = st.columns(2)
+                                with raw_col1:
+                                    st.subheader("Open Graph Data")
+                                    st.json(og_tags if og_tags else {"info": "No og:* tags detected."})
+                                with raw_col2:
+                                    st.subheader("Twitter Card Data")
+                                    st.json(twitter_tags if twitter_tags else {"info": "No twitter:* tags detected."})
                             else:
-                                for issue in twitter_issues:
-                                    icon = "🔴" if issue["level"] == "Required" else "🟡"
-                                    st.warning(f"{icon} **Missing `{issue['tag']}`** ({issue['level']})\n\n_{issue['description']}_")
+                                st.subheader("Open Graph Data")
+                                st.json(og_tags if og_tags else {"info": "No og:* tags detected."})
 
-                # --- TAB 3: RAW TAGS ---
-                with tab_raw:
-                    if check_twitter:
-                        raw_col1, raw_col2 = st.columns(2)
-                        with raw_col1:
-                            st.subheader("Open Graph Data")
-                            st.json(og_tags if og_tags else {"info": "No og:* tags detected."})
-                        with raw_col2:
-                            st.subheader("Twitter Card Data")
-                            st.json(twitter_tags if twitter_tags else {"info": "No twitter:* tags detected."})
-                    else:
-                        st.subheader("Open Graph Data")
-                        st.json(og_tags if og_tags else {"info": "No og:* tags detected."})
-
-            except requests.exceptions.RequestException as e:
-                st.error(f"Error fetching the URL: {e}")
+                    except requests.exceptions.RequestException as e:
+                        st.error(f"Failed to fetch or parse this URL: {e}")
