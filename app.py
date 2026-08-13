@@ -1,8 +1,10 @@
+import io
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import pandas as pd
+import matplotlib.pyplot as plt
 
 # Page configuration
 st.set_page_config(page_title="Multi-URL OG & Twitter Checker", page_icon="🔍", layout="wide")
@@ -85,6 +87,41 @@ def get_status_badge(issues):
     return f"⚠️ Missing Recommended ({len(issues)})"
 
 
+def dataframe_to_png(df: pd.DataFrame) -> bytes:
+    """Converts a pandas DataFrame into a formatted PNG image byte stream."""
+    fig, ax = plt.subplots(figsize=(max(8, len(df.columns) * 3), max(2, len(df) * 0.6 + 1.5)))
+    ax.axis('tight')
+    ax.axis('off')
+
+    table = ax.table(
+        cellText=df.values,
+        colLabels=df.columns,
+        cellLoc='center',
+        loc='center'
+    )
+    
+    table.auto_set_font_size(False)
+    table.set_font_size(10)
+    table.scale(1.2, 1.8)
+
+    # Style header row
+    for (row_idx, col_idx), cell in table.get_celld().items():
+        if row_idx == 0:
+            cell.set_facecolor("#1f77b4")
+            cell.get_text().set_color("white")
+            cell.get_text().set_weight("bold")
+        else:
+            cell.set_facecolor("#f9f9f9" if row_idx % 2 == 0 else "#ffffff")
+
+    plt.title("Meta Tags Inspection Summary", fontsize=14, pad=20, weight="bold")
+
+    buffer = io.BytesIO()
+    plt.savefig(buffer, format='png', bbox_inches='tight', dpi=200)
+    plt.close(fig)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
 if st.button("Inspect All URLs", type="primary"):
     url_list = [line.strip() for line in urls_input.splitlines() if line.strip()]
 
@@ -160,7 +197,7 @@ if st.button("Inspect All URLs", type="primary"):
                 row = {
                     "URL": item["url"],
                     "OG Status": "🚨 Request Failed",
-                    "Overall Status": "Failed"
+                    "Total Issues": "N/A"
                 }
                 if check_twitter:
                     row["Twitter Status"] = "🚨 Request Failed"
@@ -179,7 +216,18 @@ if st.button("Inspect All URLs", type="primary"):
             summary_rows.append(row)
 
         df_summary = pd.DataFrame(summary_rows)
+        
+        # Render Table
         st.dataframe(df_summary, use_container_width=True, hide_index=True)
+
+        # PNG Export Button
+        png_bytes = dataframe_to_png(df_summary)
+        st.download_button(
+            label="📸 Download Summary Table as PNG",
+            data=png_bytes,
+            file_name="og_summary_report.png",
+            mime="image/png"
+        )
 
         st.divider()
 
