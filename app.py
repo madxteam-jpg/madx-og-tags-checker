@@ -101,7 +101,7 @@ def dataframe_to_png(df: pd.DataFrame) -> bytes:
     )
     
     table.auto_set_font_size(False)
-    table.set_font_size(10)
+    table.set_fontsize(10)  # <-- Fixed: changed set_font_size to set_fontsize
     table.scale(1.2, 1.8)
 
     # Style header row
